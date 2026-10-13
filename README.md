@@ -22,3 +22,21 @@ npm run dev
 - Vite + React + TypeScript
 - Three.js（3D キューブと回転アニメーション）
 - cubejs（Kociemba two-phase ソルバー）
+
+## Vercel へのデプロイ
+
+スマホから開くには HTTPS が必要なので、Vercel への公開を推奨します。
+
+```bash
+npm i -g vercel
+npx vercel login
+npx vercel --prod
+```
+
+または [Vercel ダッシュボード](https://vercel.com/new) でこのリポジトリを Import しても同じです（Framework Preset: Vite、Output: `dist`）。
+
+CLI からトークンでデプロイする場合:
+
+```bash
+npx vercel --prod --token "$VERCEL_TOKEN" --yes
+```
