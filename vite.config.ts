@@ -1,15 +1,31 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+// cubejs is CoffeeScript output that reads `this.Cube` while the wrapper
+// runs as `.call(this)`. Vite's production bundle is strict ESM, so `this`
+// is undefined and the app throws on load.
+function cubejsGlobalThis(): Plugin {
+  return {
+    name: 'cubejs-global-this',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('/cubejs/lib/')) return
+      if (!code.includes('this.Cube') && !code.includes('.call(this)')) return
+      return {
+        code: code
+          .replaceAll('this.Cube', 'globalThis.Cube')
+          .replaceAll('.call(this)', '.call(globalThis)'),
+        map: null,
+      }
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  define: {
-    // cubejs (CoffeeScript build) references `global` at load time
-    global: 'globalThis',
-  },
+  plugins: [cubejsGlobalThis(), react()],
   optimizeDeps: {
-    include: ['cubejs'],
+    exclude: ['cubejs'],
   },
   build: {
     commonjsOptions: {
