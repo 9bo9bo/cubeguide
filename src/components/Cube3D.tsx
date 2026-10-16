@@ -194,7 +194,8 @@ export function Cube3D({
       const h = Math.max(mount.clientHeight, 1)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      // Keep CSS size under stylesheet control so the canvas never widens its container.
+      renderer.setSize(w, h, false)
     }
     resize()
     const ro = new ResizeObserver(resize)

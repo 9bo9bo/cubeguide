@@ -336,6 +336,14 @@ main,
   flex: 1;
 }
 
+.cube-stage canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .cube-stage-bar {
   display: flex;
   align-items: center;
@@ -814,12 +822,17 @@ main,
 
 .player-layout {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   gap: 1rem;
   min-height: 420px;
 }
 
+.player-layout > * {
+  min-width: 0;
+}
+
 .cube-stage {
+  position: relative;
   width: 100%;
   min-height: 360px;
   height: 100%;
@@ -937,7 +950,18 @@ main,
   .hero,
   .capture-stage,
   .player-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .cube-stage-wrap {
+    min-height: 0;
+  }
+
+  .cube-stage-wrap .cube-stage {
+    flex: none;
+    height: min(86vw, 380px);
+    min-height: 0;
   }
 
   .hero {
@@ -947,10 +971,6 @@ main,
   .topbar {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .cube-stage {
-    min-height: 300px;
   }
 
   .editor-body {
