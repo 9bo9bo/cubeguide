@@ -22,7 +22,7 @@ export const FACE_SHORT: Record<FaceId, string> = {
   L: '左',
 }
 
-/** Faces touching each edge of a face as drawn in the net (top, right, bottom, left). */
+/** 展開図に描いたとき、各面の上・右・下・左の辺に接する面。 */
 export const FACE_NEIGHBORS: Record<FaceId, { top: FaceId; right: FaceId; bottom: FaceId; left: FaceId }> = {
   U: { top: 'B', right: 'R', bottom: 'F', left: 'L' },
   L: { top: 'U', right: 'F', bottom: 'D', left: 'B' },
@@ -32,7 +32,7 @@ export const FACE_NEIGHBORS: Record<FaceId, { top: FaceId; right: FaceId; bottom
   D: { top: 'F', right: 'R', bottom: 'B', left: 'L' },
 }
 
-/** How to hold the cube (white up, green toward you) to see each face as drawn. */
+/** 各面を展開図どおりの向きで見るためのキューブの持ち方（白が上、緑が手前）。 */
 export const FACE_VIEW_HINT: Record<FaceId, string> = {
   F: '白を上・緑を手前にして、そのまま正面から見ます。',
   R: '白を上にしたまま、キューブを左へ90°回して赤を正面にします。',
@@ -42,7 +42,7 @@ export const FACE_VIEW_HINT: Record<FaceId, string> = {
   D: '緑を手前にしたまま、キューブを持ち上げて下から黄面を見ます（緑側が上辺）。',
 }
 
-/** Standard Western color scheme (hex) */
+/** 標準配色（ウエスタン配色、16 進カラー） */
 export const COLOR_HEX: Record<StickerColor, string> = {
   U: '#f5f5f5',
   D: '#f5d547',
@@ -99,7 +99,7 @@ function toLab({ r, g, b }: Rgb): Lab {
 }
 
 function labDistance(p: Lab, q: Lab): number {
-  // Lightness varies most with shading, so hue/chroma differences weigh more.
+  // 明度は陰影で最も大きく変わるので、色相・彩度の差を重く見る。
   const dl = (p.l - q.l) * 0.6
   const da = p.a - q.a
   const db = p.b - q.b
@@ -110,10 +110,10 @@ function luminance({ r, g, b }: Rgb): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-/** Raw (camera) RGB of each center seen so far; centers have a known color. */
+/** これまでに撮影した各中央マスの生の（カメラの）RGB。中央マスの色は既知。 */
 export type Calibration = Partial<Record<StickerColor, Rgb>>
 
-/** Raw RGB of the 9 cells for each captured face. */
+/** 撮影した各面の 9 マスの生の RGB。 */
 export type FaceSamples = Partial<Record<FaceId, Rgb[]>>
 
 export function calibrationFromSamples(samples: FaceSamples): Calibration {
@@ -126,9 +126,9 @@ export function calibrationFromSamples(samples: FaceSamples): Calibration {
 }
 
 /**
- * Expected camera RGB for each color. Colors whose center was captured use the
- * measured value; others are the reference color under the estimated light
- * (white balance from the white center if seen, otherwise overall brightness).
+ * 各色がカメラでどう写るかの予想 RGB。中央マスを撮影済みの色は実測値を使い、
+ * それ以外は推定した照明下での基準色とする（白の中央マスがあればそこから
+ * ホワイトバランスを求め、なければ全体の明るさで補正する）。
  */
 export function expectedColors(calibration: Calibration): Record<StickerColor, Rgb> {
   const seen = FACE_ORDER.filter((c) => calibration[c])
@@ -159,7 +159,7 @@ export function expectedColors(calibration: Calibration): Record<StickerColor, R
   return out
 }
 
-/** Classifies a face; the center is known, so it also calibrates the others. */
+/** 面の色を判定する。中央マスの色は既知なので、他の色の補正にも使う。 */
 export function classifyFace(cells: Rgb[], center: StickerColor, calibration: Calibration): StickerColor[] {
   const expected = expectedColors({ ...calibration, [center]: cells[4] })
   const refs = FACE_ORDER.map((c) => ({ color: c, lab: toLab(expected[c]) }))
@@ -202,12 +202,12 @@ function sampleCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: n
   return { r: median(r), g: median(g), b: median(b) }
 }
 
-/** Fraction of the square crop left outside the 3x3 guide on each side. */
+/** 正方形の切り抜き範囲のうち、3x3 ガイドの外側に残す片側あたりの割合。 */
 export const GUIDE_MARGIN = 0.12
 
 /**
- * Reads the 9 cells inside the guide frame. The guide sits over the centered
- * square crop of the source, matching how the viewport displays it.
+ * ガイド枠内の 9 マスを読み取る。ガイドは入力画像を中央で正方形に切り抜いた
+ * 範囲に重なっており、ビューポートの表示と一致する。
  */
 export function sampleFaceRgb(source: CanvasImageSource, sourceWidth: number, sourceHeight: number): Rgb[] {
   const size = 300

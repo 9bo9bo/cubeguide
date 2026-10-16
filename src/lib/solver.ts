@@ -46,7 +46,7 @@ function request(
   })
 }
 
-/** Builds the solver tables in the background so the first solve is fast. */
+/** 初回の解法計算が速くなるよう、ソルバーのテーブルをバックグラウンドで構築する。 */
 export function warmupSolver(): void {
   void request({ type: 'warmup' }, 60000)
 }

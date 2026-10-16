@@ -1,9 +1,9 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
-// cubejs is CoffeeScript output that reads `this.Cube` while the wrapper
-// runs as `.call(this)`. Vite's production bundle is strict ESM, so `this`
-// is undefined and the app throws on load.
+// cubejs は CoffeeScript の出力で、`.call(this)` で実行されるラッパーの中で
+// `this.Cube` を参照する。Vite の本番バンドルは strict な ESM なので `this` が
+// undefined になり、読み込み時にエラーになる。
 function cubejsGlobalThis(): Plugin {
   return {
     name: 'cubejs-global-this',

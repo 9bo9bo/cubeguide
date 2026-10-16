@@ -2,10 +2,10 @@ import type { FaceId, StickerColor } from './colors'
 import { COLOR_NAMES, FACE_ORDER } from './colors'
 import { analyzeDraft, type CubeIssue } from './cubeValidation'
 
-/** 54 stickers in URFDLB order, 9 each (row-major). */
+/** URFDLB 順に各面 9 枚（行優先）並べた 54 枚のステッカー。 */
 export type CubeStickers = StickerColor[]
 
-/** Stickers being entered by the user; `null` is not yet painted. */
+/** ユーザーが入力中のステッカー。`null` は未入力。 */
 export type DraftStickers = (StickerColor | null)[]
 
 export const CENTER_INDEX = 4
@@ -18,7 +18,7 @@ export function createSolvedStickers(): CubeStickers {
   return stickers
 }
 
-/** Only the centers are filled; they are fixed to the standard orientation. */
+/** 中央マスだけを埋めた状態。中央マスは標準の向きに固定する。 */
 export function createEmptyDraft(): DraftStickers {
   const draft: DraftStickers = []
   for (const face of FACE_ORDER) {
@@ -58,9 +58,9 @@ export function countColors(stickers: DraftStickers): Record<StickerColor, numbe
 export interface ValidationResult {
   ok: boolean
   issues: CubeIssue[]
-  /** Number of stickers not painted yet. */
+  /** 未入力のステッカーの数。 */
   missing: number
-  /** Colors forced by what is painted so far, keyed by sticker index. */
+  /** 入力済みの色から確定する色。キーはステッカーの番号。 */
   suggestions: Map<number, StickerColor>
 }
 
@@ -98,8 +98,8 @@ export function validateDraft(draft: DraftStickers): ValidationResult {
 }
 
 /**
- * cubejs facelet letters mean "the color of that face's center", so map each
- * observed color to the face whose center carries it.
+ * cubejs の面記号は「その面の中央マスの色」を表すので、観測した各色を
+ * その色の中央マスを持つ面に対応づける。
  */
 export function toSolverString(stickers: CubeStickers): string {
   const colorToFace = {} as Record<StickerColor, FaceId>
@@ -111,7 +111,7 @@ export function toSolverString(stickers: CubeStickers): string {
 
 export type CaptureProgress = Partial<Record<FaceId, StickerColor[]>>
 
-/** Captured faces overwrite the draft; centers stay fixed to their face color. */
+/** 撮影した面で入力中の状態を上書きする。中央マスはその面の色に固定したまま。 */
 export function mergeCapture(draft: DraftStickers, progress: CaptureProgress): DraftStickers {
   let next = draft.slice()
   for (const face of FACE_ORDER) {

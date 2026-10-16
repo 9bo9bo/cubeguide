@@ -1,6 +1,6 @@
 import { COLOR_NAMES, FACE_ORDER, FACE_SHORT, type FaceId, type StickerColor } from './colors'
 
-/** Facelet indices (URFDLB, 9 each, row-major) for each corner, U/D sticker first. */
+/** 各コーナーのステッカー番号（URFDLB 順・各面 9 枚・行優先）。U/D 面のステッカーを先頭に置く。 */
 const CORNER_FACELETS: number[][] = [
   [8, 9, 20], // URF
   [6, 18, 38], // UFL
@@ -57,7 +57,7 @@ interface PieceKind {
   name: '角' | '辺'
   slots: number[][]
   colors: FaceId[][]
-  /** Number of orientations (3 for corners, 2 for edges). */
+  /** 向きの数（コーナーは 3、エッジは 2）。 */
   n: number
 }
 
@@ -74,15 +74,15 @@ export type Draft = (StickerColor | null)[]
 
 export interface CubeIssue {
   message: string
-  /** Sticker indices to highlight. */
+  /** 強調表示するステッカーの番号。 */
   facelets: number[]
-  /** A whole-cube correction the user can apply with one tap. */
+  /** ワンタップで適用できる、キューブ全体の修正案。 */
   fix?: { label: string; stickers: Draft }
 }
 
 export interface CubeAnalysis {
   issues: CubeIssue[]
-  /** Colors forced by the stickers painted so far (only for unpainted cells). */
+  /** 入力済みのステッカーから確定する色（未入力のマスのみ）。 */
   suggestions: Map<number, StickerColor>
 }
 
@@ -152,7 +152,7 @@ interface KindState {
   issues: CubeIssue[]
 }
 
-/** Per-slot candidates with obvious contradictions reported against concrete stickers. */
+/** 位置ごとの候補を求め、明らかな矛盾は該当するステッカーと一緒に報告する。 */
 function propagate(kind: PieceKind, f: Draft): KindState {
   const issues: CubeIssue[] = []
   const cands = kind.slots.map((_, s) => intrinsicCandidates(kind, s, f))
@@ -232,11 +232,11 @@ function propagate(kind: PieceKind, f: Draft): KindState {
 interface Enumeration {
   complete: boolean
   counts: [number, number]
-  /** Per parity: facelet -> agreed color, or 'x' when completions disagree. */
+  /** パリティごと: ステッカー -> 全候補で一致した色。候補間で食い違う場合は 'x'。 */
   agree: [Map<number, FaceId | 'x'>, Map<number, FaceId | 'x'>]
 }
 
-/** Enumerates every consistent completion (within budget) honoring twist/flip sums. */
+/** ねじれ・反転の合計条件を満たす矛盾のない埋め方を、探索上限の範囲ですべて列挙する。 */
 function enumerate(kind: PieceKind, cands: Placement[][]): Enumeration {
   const order = cands.map((_, s) => s).sort((a, b) => cands[a].length - cands[b].length)
   const used = new Array(kind.colors.length).fill(false)
@@ -368,10 +368,10 @@ function rotateFace(f: Draft, face: FaceId, quarterTurns: number): Draft {
   return next
 }
 
-/** Finds a single face rotation that makes the painted stickers consistent. */
+/** 1 面を回転させるだけで入力済みのステッカーが矛盾しなくなる修正を探す。 */
 function findRotationFix(f: Draft): CubeIssue | null {
-  // Local contradictions can be checked cheaply; twist/parity problems on a
-  // partial cube need the full enumeration to confirm a rotation resolves them.
+  // 局所的な矛盾は軽く確認できるが、未完成のキューブのねじれ・パリティの問題は
+  // 回転で解消するかを確かめるのに全列挙が必要になる。
   const complete = f.every((s) => s !== null)
   const thorough = complete || analyzePieces(f, false).issues.length === 0
   for (const face of FACE_ORDER) {
@@ -396,9 +396,9 @@ const ORIENTATION_HINT =
   'いずれかの面を回転した向きで入力している可能性があります。各面の上辺がどの面に接しているか確認してください。'
 
 /**
- * Checks painted stickers (centers in standard orientation) for contradictions
- * and derives the cells whose color is already forced. cubejs never terminates
- * on some unreachable states, so a complete cube must pass before solving.
+ * 入力済みのステッカー（中央マスは標準の向き）に矛盾がないか調べ、色が確定する
+ * マスを導く。cubejs は実現不可能な状態で終了しないことがあるため、完成した
+ * キューブもこのチェックを通してから解法を計算する。
  */
 export function analyzeDraft(f: Draft): CubeAnalysis {
   const result = analyzePieces(f, true)

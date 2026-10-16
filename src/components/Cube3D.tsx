@@ -117,7 +117,7 @@ export function Cube3D({
     renderer: THREE.WebGLRenderer
     camera: THREE.PerspectiveCamera
     scene: THREE.Scene
-    /** User-controlled view rotation; cube layers turn in its local axes. */
+    /** ユーザーが操作する視点の回転。各層はこのローカル軸で回る。 */
     viewRoot: THREE.Group
     cubeRoot: THREE.Group
     pivot: THREE.Group
@@ -194,7 +194,7 @@ export function Cube3D({
       const h = Math.max(mount.clientHeight, 1)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
-      // Keep CSS size under stylesheet control so the canvas never widens its container.
+      // CSS 上のサイズはスタイルシートに任せ、canvas が親要素を押し広げないようにする。
       renderer.setSize(w, h, false)
     }
     resize()
@@ -214,7 +214,7 @@ export function Cube3D({
         state.pivot.setRotationFromAxisAngle(state.anim.axis, angle)
 
         if (t >= 1) {
-          // Detach and rebuild from stickers (parent updates after callback)
+          // 切り離してステッカーから作り直す（親はコールバック後に更新される）
           for (const cubie of cubiesRef.current) {
             if (cubie.mesh.parent === state.pivot) {
               state.pivot.remove(cubie.mesh)

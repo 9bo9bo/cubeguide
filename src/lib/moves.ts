@@ -21,7 +21,7 @@ export type Move =
 export interface MoveInfo {
   move: Move
   face: 'U' | 'D' | 'R' | 'L' | 'F' | 'B'
-  /** Quarter turns: +1 = clockwise looking at that face, -1 = CCW, +2 = 180 */
+  /** 90° 単位の回転数: +1 = その面を正面から見て時計回り、-1 = 反時計回り、+2 = 180° */
   turns: 1 | -1 | 2
   labelJa: string
   hintJa: string
@@ -61,15 +61,15 @@ export function describeMove(move: Move): MoveInfo {
   return buildInfo(move)
 }
 
-/** Axis and sign for Three.js animation (world space, Y-up). */
+/** Three.js アニメーション用の回転軸と符号（ワールド座標、Y 軸が上）。 */
 export function moveAxis(face: MoveInfo['face']): {
   axis: 'x' | 'y' | 'z'
-  /** Layer coordinate: -1, 0, or 1 */
+  /** 層の座標: -1, 0, 1 のいずれか */
   layer: -1 | 0 | 1
-  /** Animation angle in radians (positive = right-hand rule on axis) */
+  /** アニメーションの回転角（ラジアン、正の向きは軸に対する右ねじの法則） */
   angleForTurns: (turns: 1 | -1 | 2) => number
 } {
-  // Cube orientation: U=+Y, D=-Y, F=+Z, B=-Z, R=+X, L=-X
+  // キューブの向き: U=+Y, D=-Y, F=+Z, B=-Z, R=+X, L=-X
   switch (face) {
     case 'R':
       return {

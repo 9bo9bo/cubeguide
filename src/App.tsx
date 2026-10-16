@@ -41,7 +41,7 @@ export default function App() {
   }, [])
 
   const [samples, setSamples] = useState<FaceSamples>({})
-  /** Last automatic classification per face, to tell untouched faces from hand-fixed ones. */
+  /** 面ごとの直近の自動判定結果。手で直した面と未修正の面を見分けるために使う。 */
   const autoColors = useRef<CaptureProgress>({})
 
   const onCapture = useCallback((face: FaceId, colors: StickerColor[]) => {
@@ -53,7 +53,7 @@ export default function App() {
     setSamples(nextSamples)
     const calibration = calibrationFromSamples(nextSamples)
 
-    // A new center refines the calibration, so re-read faces the user hasn't touched.
+    // 新しい中央色でキャリブレーションが精度を増すので、未修正の面を判定し直す。
     const refreshed: CaptureProgress = {}
     for (const f of FACE_ORDER) {
       const s = nextSamples[f]

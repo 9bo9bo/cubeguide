@@ -4,7 +4,7 @@ import type { CubeStickers } from '../lib/cubeState'
 import { describeMove, type Move } from '../lib/moves'
 import { Cube3D } from './Cube3D'
 
-/** At ×1 speed: duration of one turn animation and the pause before the next. */
+/** 速度×1 のときの、1 手の回転アニメーション時間と次の手までの間隔。 */
 const BASE_TURN_MS = 1000
 const BASE_PAUSE_MS = 900
 

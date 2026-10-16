@@ -33,7 +33,7 @@ function rev<T>(arr: T[]): T[] {
   return arr.slice().reverse()
 }
 
-/** Facelet cycles verified against cubejs across multi-move sequences. */
+/** 複数手の手順で cubejs と突き合わせて検証済みのステッカー巡回。 */
 function applyQuarter(s: StickerColor[], face: Face): void {
   switch (face) {
     case 'U': {

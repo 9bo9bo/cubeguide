@@ -15,7 +15,7 @@ import type { CaptureProgress } from '../lib/cubeState'
 
 interface FaceCaptureProps {
   progress: CaptureProgress
-  /** Stores the raw cells of a face and returns its calibrated classification. */
+  /** 面の生の色を保存し、キャリブレーション済みの判定結果を返す。 */
   onSample: (face: FaceId, cells: Rgb[]) => StickerColor[]
   onCapture: (face: FaceId, colors: StickerColor[]) => void
   onDone: () => void
