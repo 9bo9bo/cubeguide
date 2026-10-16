@@ -1,7 +1,7 @@
 import { COLOR_NAMES, FACE_ORDER, FACE_SHORT, type FaceId, type StickerColor } from './colors'
 
 /** 各コーナーのステッカー番号（URFDLB 順・各面 9 枚・行優先）。U/D 面のステッカーを先頭に置く。 */
-const CORNER_FACELETS: number[][] = [
+export const CORNER_FACELETS: number[][] = [
   [8, 9, 20], // URF
   [6, 18, 38], // UFL
   [0, 36, 47], // ULB
@@ -12,7 +12,7 @@ const CORNER_FACELETS: number[][] = [
   [35, 17, 51], // DRB
 ]
 
-const CORNER_COLORS: FaceId[][] = [
+export const CORNER_COLORS: FaceId[][] = [
   ['U', 'R', 'F'],
   ['U', 'F', 'L'],
   ['U', 'L', 'B'],
@@ -23,7 +23,7 @@ const CORNER_COLORS: FaceId[][] = [
   ['D', 'R', 'B'],
 ]
 
-const EDGE_FACELETS: number[][] = [
+export const EDGE_FACELETS: number[][] = [
   [5, 10], // UR
   [7, 19], // UF
   [3, 37], // UL
@@ -38,7 +38,7 @@ const EDGE_FACELETS: number[][] = [
   [48, 14], // BR
 ]
 
-const EDGE_COLORS: FaceId[][] = [
+export const EDGE_COLORS: FaceId[][] = [
   ['U', 'R'],
   ['U', 'F'],
   ['U', 'L'],

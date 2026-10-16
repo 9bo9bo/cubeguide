@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ColorEditor } from './components/ColorEditor'
 import { FaceCapture } from './components/FaceCapture'
+import { LearnPage } from './components/LearnPage'
 import { SolutionPlayer } from './components/SolutionPlayer'
 import {
   calibrationFromSamples,
@@ -26,8 +27,21 @@ import './App.css'
 
 type Phase = 'intro' | 'capture' | 'edit' | 'play'
 
+const BACK_LABELS: Record<Phase, string> = {
+  intro: 'トップに戻る',
+  capture: '撮影に戻る',
+  edit: '色の入力に戻る',
+  play: '解法ステップに戻る',
+}
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>('intro')
+  /** 学習ページは他の画面の上に重ねて開き、閉じると元の画面にそのまま戻る。 */
+  const [learning, setLearning] = useState(false)
+  const openLearn = () => {
+    setLearning(true)
+    window.scrollTo(0, 0)
+  }
   const [editFrom, setEditFrom] = useState<'intro' | 'capture'>('intro')
   const [progress, setProgress] = useState<CaptureProgress>({})
   const [draft, setDraft] = useState<DraftStickers>(createEmptyDraft)
@@ -130,76 +144,94 @@ export default function App() {
           </div>
         </div>
         <nav className="steps" aria-label="進行状況">
-          <span className={phase === 'intro' || phase === 'capture' ? 'on' : ''}>入力</span>
-          <span className={phase === 'edit' ? 'on' : ''}>修正</span>
-          <span className={phase === 'play' ? 'on' : ''}>解法</span>
+          <span className={!learning && (phase === 'intro' || phase === 'capture') ? 'on' : ''}>
+            入力
+          </span>
+          <span className={!learning && phase === 'edit' ? 'on' : ''}>修正</span>
+          <span className={!learning && phase === 'play' ? 'on' : ''}>解法</span>
+          <button
+            type="button"
+            className={learning ? 'learn-link on' : 'learn-link'}
+            aria-pressed={learning}
+            onClick={() => (learning ? setLearning(false) : openLearn())}
+          >
+            学ぶ
+          </button>
         </nav>
       </header>
 
       <main>
-        {phase === 'intro' && (
-          <section className="hero panel">
-            <div className="hero-copy">
-              <h1>CubeGuide</h1>
-              <p className="lede">
-                展開図や写真で今のキューブを入力すると、一手ずつアニメーションで回し方を案内します。
-              </p>
-              <div className="hero-actions">
-                <button type="button" className="primary" onClick={startManual}>
-                  展開図で入力する
-                </button>
-                <button type="button" className="ghost" onClick={() => setPhase('capture')}>
-                  写真・カメラで入力
-                </button>
-                <button type="button" className="ghost" onClick={startDemo}>
-                  デモ（ランダムスクランブル）
+        {learning && <LearnPage onBack={() => setLearning(false)} backLabel={BACK_LABELS[phase]} />}
+
+        <div hidden={learning}>
+          {phase === 'intro' && (
+            <section className="hero panel">
+              <div className="hero-copy">
+                <h1>CubeGuide</h1>
+                <p className="lede">
+                  展開図や写真で今のキューブを入力すると、一手ずつアニメーションで回し方を案内します。
+                </p>
+                <div className="hero-actions">
+                  <button type="button" className="primary" onClick={startManual}>
+                    展開図で入力する
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setPhase('capture')}>
+                    写真・カメラで入力
+                  </button>
+                  <button type="button" className="ghost" onClick={startDemo}>
+                    デモ（ランダムスクランブル）
+                  </button>
+                </div>
+                <button type="button" className="link hero-learn" onClick={openLearn}>
+                  はじめての方へ: ルービックキューブの解き方を学ぶ →
                 </button>
               </div>
-            </div>
-            <div className="hero-visual" aria-hidden>
-              <div className="hero-cube">
-                {(['U', 'D', 'F', 'B', 'R', 'L'] as const).map((face) => (
-                  <div key={face} className={`hero-face face-${face}`}>
-                    {Array.from({ length: 9 }, (_, i) => (
-                      <i key={i} />
-                    ))}
-                  </div>
-                ))}
+              <div className="hero-visual" aria-hidden>
+                <div className="hero-cube">
+                  {(['U', 'D', 'F', 'B', 'R', 'L'] as const).map((face) => (
+                    <div key={face} className={`hero-face face-${face}`}>
+                      {Array.from({ length: 9 }, (_, i) => (
+                        <i key={i} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
-        {phase === 'capture' && (
-          <FaceCapture
-            progress={progress}
-            onSample={onSample}
-            onCapture={onCapture}
-            onDone={goEditFromCapture}
-            onBack={() => setPhase('intro')}
-          />
-        )}
+          {phase === 'capture' && !learning && (
+            <FaceCapture
+              progress={progress}
+              onSample={onSample}
+              onCapture={onCapture}
+              onDone={goEditFromCapture}
+              onBack={() => setPhase('intro')}
+            />
+          )}
 
-        {phase === 'edit' && (
-          <ColorEditor
-            draft={draft}
-            onChange={changeDraft}
-            onBack={() => setPhase(editFrom)}
-            backLabel={editFrom === 'capture' ? '撮影に戻る' : 'トップに戻る'}
-            onSolve={runSolve}
-            solving={solving}
-            errors={errors}
-          />
-        )}
+          {phase === 'edit' && (
+            <ColorEditor
+              draft={draft}
+              onChange={changeDraft}
+              onBack={() => setPhase(editFrom)}
+              backLabel={editFrom === 'capture' ? '撮影に戻る' : 'トップに戻る'}
+              onSolve={runSolve}
+              solving={solving}
+              errors={errors}
+            />
+          )}
 
-        {phase === 'play' && (
-          <SolutionPlayer
-            initialStickers={stickers}
-            moves={moves}
-            onBack={() => setPhase('edit')}
-            onRestart={restart}
-          />
-        )}
+          {phase === 'play' && (
+            <SolutionPlayer
+              initialStickers={stickers}
+              moves={moves}
+              onBack={() => setPhase('edit')}
+              onRestart={restart}
+              onLearn={openLearn}
+            />
+          )}
+        </div>
       </main>
 
       <footer className="site-foot">

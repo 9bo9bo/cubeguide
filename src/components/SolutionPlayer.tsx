@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { applyMove, applyMoves } from '../lib/cubeLogic'
 import type { CubeStickers } from '../lib/cubeState'
+import { explainSolution } from '../lib/explain'
 import { describeMove, type Move } from '../lib/moves'
 import { Cube3D } from './Cube3D'
 
 /** 速度×1 のときの、1 手の回転アニメーション時間と次の手までの間隔。 */
 const BASE_TURN_MS = 1000
 const BASE_PAUSE_MS = 900
+const EXPLAIN_KEY = 'cubeguide:explain'
 
 interface SolutionPlayerProps {
   initialStickers: CubeStickers
   moves: Move[]
   onBack: () => void
   onRestart: () => void
+  onLearn: () => void
 }
 
 export function SolutionPlayer({
@@ -20,7 +23,19 @@ export function SolutionPlayer({
   moves,
   onBack,
   onRestart,
+  onLearn,
 }: SolutionPlayerProps) {
+  const explanations = useMemo(
+    () => explainSolution(initialStickers, moves),
+    [initialStickers, moves],
+  )
+  const [showExplain, setShowExplain] = useState(() => localStorage.getItem(EXPLAIN_KEY) !== 'off')
+  const toggleExplain = () => {
+    setShowExplain((v) => {
+      localStorage.setItem(EXPLAIN_KEY, v ? 'off' : 'on')
+      return !v
+    })
+  }
   const [step, setStep] = useState(0)
   const [stickers, setStickers] = useState(initialStickers)
   const [animating, setAnimating] = useState<Move | null>(null)
@@ -63,7 +78,8 @@ export function SolutionPlayer({
   }, [autoPlay, animating, done, playNext, speed])
 
   const confirmRestart = () => {
-    if (window.confirm('入力したキューブの色はすべて消えます。最初の画面に戻りますか？')) onRestart()
+    if (window.confirm('入力したキューブの色はすべて消えます。最初の画面に戻りますか？'))
+      onRestart()
   }
 
   useEffect(() => {
@@ -110,7 +126,9 @@ export function SolutionPlayer({
           <div className="progress-track" aria-hidden>
             <div
               className="progress-fill"
-              style={{ width: `${moves.length ? (step / moves.length) * 100 : 100}%` }}
+              style={{
+                width: `${moves.length ? (step / moves.length) * 100 : 100}%`,
+              }}
             />
           </div>
 
@@ -140,6 +158,15 @@ export function SolutionPlayer({
               {autoPlay ? '自動停止' : '自動再生'}
             </button>
           </div>
+
+          {moves.length > 0 && (
+            <ExplainBox
+              open={showExplain}
+              onToggle={toggleExplain}
+              onLearn={onLearn}
+              explanation={done ? null : explanations[step]}
+            />
+          )}
 
           <label className="speed">
             速度
@@ -176,5 +203,52 @@ export function SolutionPlayer({
         </button>
       </footer>
     </section>
+  )
+}
+
+function ExplainBox({
+  open,
+  onToggle,
+  onLearn,
+  explanation,
+}: {
+  open: boolean
+  onToggle: () => void
+  onLearn: () => void
+  explanation: ReturnType<typeof explainSolution>[number] | null
+}) {
+  return (
+    <div className={`explain${open ? ' open' : ''}`}>
+      <button type="button" className="explain-toggle" aria-expanded={open} onClick={onToggle}>
+        <span>なぜこの手？</span>
+        <span className="explain-caret" aria-hidden>
+          {open ? '閉じる' : '解説を表示'}
+        </span>
+      </button>
+      {open && (
+        <div className="explain-body" aria-live="polite">
+          {explanation ? (
+            <>
+              <p className={`explain-title phase-${explanation.phase}`}>{explanation.title}</p>
+              <p className="explain-detail">{explanation.detail}</p>
+              <ul className="explain-stats">
+                {explanation.stats.map((s) => (
+                  <li key={s.label}>
+                    {s.label} <strong>{s.value}</strong>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="explain-detail">
+              下準備で全ピースの向きを揃え、仕上げで位置を揃えて完成しました。
+            </p>
+          )}
+          <button type="button" className="link" onClick={onLearn}>
+            解き方の仕組みを学ぶ
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

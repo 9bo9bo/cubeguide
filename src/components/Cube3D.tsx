@@ -191,7 +191,8 @@ export function Cube3D({
 
     const resize = () => {
       const w = mount.clientWidth
-      const h = Math.max(mount.clientHeight, 1)
+      const h = mount.clientHeight
+      if (w === 0 || h === 0) return
       camera.aspect = w / h
       camera.updateProjectionMatrix()
       // CSS 上のサイズはスタイルシートに任せ、canvas が親要素を押し広げないようにする。

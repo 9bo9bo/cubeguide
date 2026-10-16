@@ -57,6 +57,14 @@ export function parseAlgorithm(algo: string): Move[] {
   return trimmed.split(/\s+/).filter(Boolean) as Move[]
 }
 
+/** 手順を逆にたどる手順（各手を逆回転にして逆順に並べる）。 */
+export function invertMoves(moves: Move[]): Move[] {
+  return moves
+    .slice()
+    .reverse()
+    .map((m) => (m.endsWith('2') ? m : m.endsWith("'") ? m[0] : `${m}'`) as Move)
+}
+
 export function describeMove(move: Move): MoveInfo {
   return buildInfo(move)
 }
