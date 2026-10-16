@@ -1,8 +1,14 @@
 import type { FaceId, StickerColor } from './colors'
-import { FACE_ORDER } from './colors'
+import { COLOR_NAMES, FACE_ORDER } from './colors'
+import { analyzeDraft, type CubeIssue } from './cubeValidation'
 
 /** 54 stickers in URFDLB order, 9 each (row-major). */
 export type CubeStickers = StickerColor[]
+
+/** Stickers being entered by the user; `null` is not yet painted. */
+export type DraftStickers = (StickerColor | null)[]
+
+export const CENTER_INDEX = 4
 
 export function createSolvedStickers(): CubeStickers {
   const stickers: StickerColor[] = []
@@ -12,114 +18,108 @@ export function createSolvedStickers(): CubeStickers {
   return stickers
 }
 
-export function createEmptyStickers(): CubeStickers {
-  return Array(54).fill('U') as StickerColor[]
+/** Only the centers are filled; they are fixed to the standard orientation. */
+export function createEmptyDraft(): DraftStickers {
+  const draft: DraftStickers = []
+  for (const face of FACE_ORDER) {
+    for (let i = 0; i < 9; i++) draft.push(i === CENTER_INDEX ? face : null)
+  }
+  return draft
 }
 
 export function faceOffset(face: FaceId): number {
   return FACE_ORDER.indexOf(face) * 9
 }
 
-export function getFace(stickers: CubeStickers, face: FaceId): StickerColor[] {
+export function getFace<T>(stickers: T[], face: FaceId): T[] {
   const o = faceOffset(face)
   return stickers.slice(o, o + 9)
 }
 
-export function setFace(
-  stickers: CubeStickers,
-  face: FaceId,
-  faceColors: StickerColor[],
-): CubeStickers {
+export function setFace<T>(stickers: T[], face: FaceId, faceColors: T[]): T[] {
   const next = stickers.slice()
   const o = faceOffset(face)
   for (let i = 0; i < 9; i++) next[o + i] = faceColors[i]
   return next
 }
 
-export function setSticker(
-  stickers: CubeStickers,
-  face: FaceId,
-  index: number,
-  color: StickerColor,
-): CubeStickers {
+export function setSticker<T>(stickers: T[], face: FaceId, index: number, color: T): T[] {
   const next = stickers.slice()
   next[faceOffset(face) + index] = color
   return next
 }
 
-export interface ValidationResult {
-  ok: boolean
-  errors: string[]
+export function countColors(stickers: DraftStickers): Record<StickerColor, number> {
+  const counts: Record<StickerColor, number> = { U: 0, R: 0, F: 0, D: 0, L: 0, B: 0 }
+  for (const s of stickers) if (s) counts[s]++
+  return counts
 }
 
-export function validateStickers(stickers: CubeStickers): ValidationResult {
-  const errors: string[] = []
-  if (stickers.length !== 54) {
-    return { ok: false, errors: ['ステッカー数が不正です。'] }
+export interface ValidationResult {
+  ok: boolean
+  issues: CubeIssue[]
+  /** Number of stickers not painted yet. */
+  missing: number
+  /** Colors forced by what is painted so far, keyed by sticker index. */
+  suggestions: Map<number, StickerColor>
+}
+
+export function validateDraft(draft: DraftStickers): ValidationResult {
+  const suggestions = new Map<number, StickerColor>()
+  if (draft.length !== 54) {
+    return { ok: false, issues: [{ message: 'ステッカー数が不正です。', facelets: [] }], missing: 0, suggestions }
+  }
+  const missing = draft.filter((s) => s === null).length
+  const issues: CubeIssue[] = []
+
+  const centers = FACE_ORDER.map((f) => draft[faceOffset(f) + CENTER_INDEX])
+  if (centers.some((c, i) => c !== FACE_ORDER[i])) {
+    issues.push({ message: '中心の色が標準の配置になっていません。', facelets: [] })
+    return { ok: false, issues, missing, suggestions }
   }
 
-  const counts: Record<StickerColor, number> = {
-    U: 0,
-    R: 0,
-    F: 0,
-    D: 0,
-    L: 0,
-    B: 0,
-  }
-  for (const s of stickers) counts[s]++
-  for (const face of FACE_ORDER) {
-    if (counts[face] !== 9) {
-      errors.push(`${face}色が ${counts[face]} 枚です（9枚である必要があります）。`)
+  const counts = countColors(draft)
+  for (const color of FACE_ORDER) {
+    if (counts[color] > 9 || (missing === 0 && counts[color] !== 9)) {
+      issues.push({
+        message: `${COLOR_NAMES[color]}が ${counts[color]} 枚あります（9枚である必要があります）。`,
+        facelets: draft.flatMap((s, i) => (s === color && i % 9 !== CENTER_INDEX ? [i] : [])),
+      })
     }
   }
 
-  const centers = FACE_ORDER.map((f) => stickers[faceOffset(f) + 4])
-  const centerSet = new Set(centers)
-  if (centerSet.size !== 6) {
-    errors.push('各面の中心色が重複しています。中心は6色それぞれ1つにしてください。')
+  const analysis = analyzeDraft(draft)
+  issues.push(...analysis.issues)
+  if (issues.length === 0) {
+    for (const [idx, color] of analysis.suggestions) suggestions.set(idx, color)
   }
 
-  return { ok: errors.length === 0, errors }
+  return { ok: missing === 0 && issues.length === 0, issues, missing, suggestions }
 }
 
 /**
- * Remap sticker colors so centers match URFDLB face letters expected by cubejs.
- * User may have photographed with arbitrary orientation of whole cube, but
- * centers define which color is which face.
+ * cubejs facelet letters mean "the color of that face's center", so map each
+ * observed color to the face whose center carries it.
  */
 export function toSolverString(stickers: CubeStickers): string {
-  // After validation, centers should be unique. Map observed center color → face letter.
-  // stickers store colors as FaceId letters already representing absolute colors
-  // (U=white etc). Centers of each face slot should equal that face's color for
-  // a correctly oriented cube. If user holds cube with white on U etc., centers match.
-  //
-  // If centers are permuted (cube rotated in hand), we remap so that whatever color
-  // is on physical U center becomes 'U' in the string for that face position... 
-  // Actually cubejs fromString expects: position U1..U9 have colors of the pieces,
-  // where 'U' means the color of the U center (white). So stickers as FaceId where
-  // U=white works IF white center is on U face.
-  //
-  // Remap: let centerColor[face] = stickers[faceOffset(face)+4]
-  // We need color X that sits on face F's center. The facelet string uses letters
-  // meaning "the color belonging to face X". So letter = which face has that color as center.
   const colorToFace = {} as Record<StickerColor, FaceId>
   for (const face of FACE_ORDER) {
-    const centerColor = stickers[faceOffset(face) + 4]
-    colorToFace[centerColor] = face
+    colorToFace[stickers[faceOffset(face) + CENTER_INDEX]] = face
   }
   return stickers.map((c) => colorToFace[c]).join('')
 }
 
 export type CaptureProgress = Partial<Record<FaceId, StickerColor[]>>
 
-export function mergeCapture(
-  stickers: CubeStickers,
-  progress: CaptureProgress,
-): CubeStickers {
-  let next = stickers.slice()
+/** Captured faces overwrite the draft; centers stay fixed to their face color. */
+export function mergeCapture(draft: DraftStickers, progress: CaptureProgress): DraftStickers {
+  let next = draft.slice()
   for (const face of FACE_ORDER) {
     const faceColors = progress[face]
-    if (faceColors) next = setFace(next, face, faceColors)
+    if (!faceColors) continue
+    const fixed: DraftStickers = faceColors.slice()
+    fixed[CENTER_INDEX] = face
+    next = setFace(next, face, fixed)
   }
   return next
 }

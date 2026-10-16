@@ -4,6 +4,10 @@ import type { CubeStickers } from '../lib/cubeState'
 import { describeMove, type Move } from '../lib/moves'
 import { Cube3D } from './Cube3D'
 
+/** At ×1 speed: duration of one turn animation and the pause before the next. */
+const BASE_TURN_MS = 1000
+const BASE_PAUSE_MS = 900
+
 interface SolutionPlayerProps {
   initialStickers: CubeStickers
   moves: Move[]
@@ -27,7 +31,7 @@ export function SolutionPlayer({
   const info = currentMove ? describeMove(currentMove) : null
   const done = step >= moves.length
 
-  const animationMs = useMemo(() => Math.round(520 / speed), [speed])
+  const animationMs = useMemo(() => Math.round(BASE_TURN_MS / speed), [speed])
 
   const resetTo = useCallback(
     (nextStep: number) => {
@@ -54,9 +58,13 @@ export function SolutionPlayer({
 
   useEffect(() => {
     if (!autoPlay || animating || done) return
-    const t = window.setTimeout(() => playNext(), 280)
+    const t = window.setTimeout(() => playNext(), Math.round(BASE_PAUSE_MS / speed))
     return () => clearTimeout(t)
-  }, [autoPlay, animating, done, playNext])
+  }, [autoPlay, animating, done, playNext, speed])
+
+  const confirmRestart = () => {
+    if (window.confirm('入力したキューブの色はすべて消えます。最初の画面に戻りますか？')) onRestart()
+  }
 
   useEffect(() => {
     if (done) setAutoPlay(false)
@@ -163,7 +171,7 @@ export function SolutionPlayer({
         <button type="button" className="ghost" onClick={onBack}>
           色修正に戻る
         </button>
-        <button type="button" className="ghost" onClick={onRestart}>
+        <button type="button" className="ghost" onClick={confirmRestart}>
           最初から
         </button>
       </footer>

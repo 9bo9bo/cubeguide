@@ -117,6 +117,8 @@ export function Cube3D({
     renderer: THREE.WebGLRenderer
     camera: THREE.PerspectiveCamera
     scene: THREE.Scene
+    /** User-controlled view rotation; cube layers turn in its local axes. */
+    viewRoot: THREE.Group
     cubeRoot: THREE.Group
     pivot: THREE.Group
     anim: {
@@ -146,13 +148,46 @@ export function Cube3D({
 
     scene.add(new THREE.AmbientLight(0xffffff, 1))
 
+    const viewRoot = new THREE.Group()
     const cubeRoot = new THREE.Group()
     const pivot = new THREE.Group()
-    scene.add(cubeRoot)
-    scene.add(pivot)
+    viewRoot.add(cubeRoot)
+    viewRoot.add(pivot)
+    scene.add(viewRoot)
 
     cubiesRef.current = buildCubies(cubeRoot, stickersRef.current)
-    sceneRef.current = { renderer, camera, scene, cubeRoot, pivot, anim: null }
+    sceneRef.current = { renderer, camera, scene, viewRoot, cubeRoot, pivot, anim: null }
+
+    const canvas = renderer.domElement
+    canvas.style.touchAction = 'none'
+    canvas.style.cursor = 'grab'
+    let drag: { id: number; x: number; y: number } | null = null
+    const worldX = new THREE.Vector3(1, 0, 0)
+    const worldY = new THREE.Vector3(0, 1, 0)
+    const turn = new THREE.Quaternion()
+    const onDown = (e: PointerEvent) => {
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY }
+      canvas.setPointerCapture(e.pointerId)
+      canvas.style.cursor = 'grabbing'
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!drag || drag.id !== e.pointerId) return
+      const dx = e.clientX - drag.x
+      const dy = e.clientY - drag.y
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY }
+      const speed = 0.01
+      viewRoot.quaternion.premultiply(turn.setFromAxisAngle(worldY, dx * speed))
+      viewRoot.quaternion.premultiply(turn.setFromAxisAngle(worldX, dy * speed))
+    }
+    const onUp = (e: PointerEvent) => {
+      if (!drag || drag.id !== e.pointerId) return
+      drag = null
+      canvas.style.cursor = 'grab'
+    }
+    canvas.addEventListener('pointerdown', onDown)
+    canvas.addEventListener('pointermove', onMove)
+    canvas.addEventListener('pointerup', onUp)
+    canvas.addEventListener('pointercancel', onUp)
 
     const resize = () => {
       const w = mount.clientWidth
@@ -189,8 +224,6 @@ export function Cube3D({
           animatingRef.current = false
           onCompleteRef.current?.()
         }
-      } else {
-        cubeRoot.rotation.y += 0.003
       }
 
       renderer.render(scene, camera)
@@ -200,6 +233,10 @@ export function Cube3D({
     return () => {
       cancelAnimationFrame(frame)
       ro.disconnect()
+      canvas.removeEventListener('pointerdown', onDown)
+      canvas.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointerup', onUp)
+      canvas.removeEventListener('pointercancel', onUp)
       disposeCubies(cubeRoot)
       renderer.dispose()
       if (renderer.domElement.parentElement === mount) {
@@ -228,8 +265,6 @@ export function Cube3D({
       axisInfo.axis === 'z' ? 1 : 0,
     )
 
-    // Reset idle tilt so layer aligns with world axes
-    state.cubeRoot.rotation.y = 0
     state.pivot.rotation.set(0, 0, 0)
 
     for (const cubie of cubiesRef.current) {
@@ -252,5 +287,19 @@ export function Cube3D({
     }
   }, [animatingMove, animationMs])
 
-  return <div className="cube-stage" ref={mountRef} />
+  return (
+    <div className="cube-stage-wrap">
+      <div className="cube-stage" ref={mountRef} />
+      <div className="cube-stage-bar">
+        <span>ドラッグで回転できます</span>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => sceneRef.current?.viewRoot.quaternion.identity()}
+        >
+          向きを戻す
+        </button>
+      </div>
+    </div>
+  )
 }

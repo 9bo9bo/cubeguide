@@ -22,6 +22,26 @@ export const FACE_SHORT: Record<FaceId, string> = {
   L: '左',
 }
 
+/** Faces touching each edge of a face as drawn in the net (top, right, bottom, left). */
+export const FACE_NEIGHBORS: Record<FaceId, { top: FaceId; right: FaceId; bottom: FaceId; left: FaceId }> = {
+  U: { top: 'B', right: 'R', bottom: 'F', left: 'L' },
+  L: { top: 'U', right: 'F', bottom: 'D', left: 'B' },
+  F: { top: 'U', right: 'R', bottom: 'D', left: 'L' },
+  R: { top: 'U', right: 'B', bottom: 'D', left: 'F' },
+  B: { top: 'U', right: 'L', bottom: 'D', left: 'R' },
+  D: { top: 'F', right: 'R', bottom: 'B', left: 'L' },
+}
+
+/** How to hold the cube (white up, green toward you) to see each face as drawn. */
+export const FACE_VIEW_HINT: Record<FaceId, string> = {
+  F: '白を上・緑を手前にして、そのまま正面から見ます。',
+  R: '白を上にしたまま、キューブを左へ90°回して赤を正面にします。',
+  B: '白を上にしたまま、キューブを180°回して青を正面にします。',
+  L: '白を上にしたまま、キューブを右へ90°回して橙を正面にします。',
+  U: '緑を手前にしたまま、上から白面をのぞき込みます（奥の青側が上辺）。',
+  D: '緑を手前にしたまま、キューブを持ち上げて下から黄面を見ます（緑側が上辺）。',
+}
+
 /** Standard Western color scheme (hex) */
 export const COLOR_HEX: Record<StickerColor, string> = {
   U: '#f5f5f5',
@@ -41,7 +61,7 @@ export const COLOR_NAMES: Record<StickerColor, string> = {
   L: '橙',
 }
 
-export const CAPTURE_ORDER: FaceId[] = ['U', 'R', 'F', 'D', 'L', 'B']
+export const CAPTURE_ORDER: FaceId[] = ['F', 'R', 'B', 'L', 'U', 'D']
 
 export interface Rgb {
   r: number
@@ -58,89 +78,155 @@ const REFERENCE_RGB: Record<StickerColor, Rgb> = {
   L: { r: 247, g: 103, b: 7 },
 }
 
-function rgbDistance(a: Rgb, b: Rgb): number {
-  const dr = a.r - b.r
-  const dg = a.g - b.g
-  const db = a.b - b.b
-  return dr * dr + dg * dg + db * db
+interface Lab {
+  l: number
+  a: number
+  b: number
 }
 
-export function nearestColor(rgb: Rgb): StickerColor {
-  let best: StickerColor = 'U'
-  let bestDist = Infinity
-  for (const color of FACE_ORDER) {
-    const dist = rgbDistance(rgb, REFERENCE_RGB[color])
-    if (dist < bestDist) {
-      bestDist = dist
-      best = color
+function toLab({ r, g, b }: Rgb): Lab {
+  const lin = (v: number) => {
+    const c = Math.min(Math.max(v, 0), 255) / 255
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
+  const x = (lr * 0.4124 + lg * 0.3576 + lb * 0.1805) / 0.95047
+  const y = lr * 0.2126 + lg * 0.7152 + lb * 0.0722
+  const z = (lr * 0.0193 + lg * 0.1192 + lb * 0.9505) / 1.08883
+  const f = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27) * t / 116 + 16 / 116)
+  const [fx, fy, fz] = [f(x), f(y), f(z)]
+  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) }
+}
+
+function labDistance(p: Lab, q: Lab): number {
+  // Lightness varies most with shading, so hue/chroma differences weigh more.
+  const dl = (p.l - q.l) * 0.6
+  const da = p.a - q.a
+  const db = p.b - q.b
+  return dl * dl + da * da + db * db
+}
+
+function luminance({ r, g, b }: Rgb): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** Raw (camera) RGB of each center seen so far; centers have a known color. */
+export type Calibration = Partial<Record<StickerColor, Rgb>>
+
+/** Raw RGB of the 9 cells for each captured face. */
+export type FaceSamples = Partial<Record<FaceId, Rgb[]>>
+
+export function calibrationFromSamples(samples: FaceSamples): Calibration {
+  const calibration: Calibration = {}
+  for (const face of FACE_ORDER) {
+    const cells = samples[face]
+    if (cells) calibration[face] = cells[4]
+  }
+  return calibration
+}
+
+/**
+ * Expected camera RGB for each color. Colors whose center was captured use the
+ * measured value; others are the reference color under the estimated light
+ * (white balance from the white center if seen, otherwise overall brightness).
+ */
+export function expectedColors(calibration: Calibration): Record<StickerColor, Rgb> {
+  const seen = FACE_ORDER.filter((c) => calibration[c])
+  let gain: Rgb = { r: 1, g: 1, b: 1 }
+  const white = calibration.U
+  if (white) {
+    const clamp = (v: number) => Math.min(Math.max(v, 0.4), 3)
+    gain = {
+      r: clamp(REFERENCE_RGB.U.r / Math.max(white.r, 1)),
+      g: clamp(REFERENCE_RGB.U.g / Math.max(white.g, 1)),
+      b: clamp(REFERENCE_RGB.U.b / Math.max(white.b, 1)),
+    }
+  } else if (seen.length > 0) {
+    const ratio =
+      seen.reduce((sum, c) => sum + luminance(REFERENCE_RGB[c]) / Math.max(luminance(calibration[c]!), 1), 0) /
+      seen.length
+    const k = Math.min(Math.max(ratio, 0.4), 3)
+    gain = { r: k, g: k, b: k }
+  }
+  const out = {} as Record<StickerColor, Rgb>
+  for (const c of FACE_ORDER) {
+    out[c] = calibration[c] ?? {
+      r: REFERENCE_RGB[c].r / gain.r,
+      g: REFERENCE_RGB[c].g / gain.g,
+      b: REFERENCE_RGB[c].b / gain.b,
     }
   }
-  return best
+  return out
 }
 
-export function sampleCellAverage(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-): Rgb {
-  const inset = size * 0.25
+/** Classifies a face; the center is known, so it also calibrates the others. */
+export function classifyFace(cells: Rgb[], center: StickerColor, calibration: Calibration): StickerColor[] {
+  const expected = expectedColors({ ...calibration, [center]: cells[4] })
+  const refs = FACE_ORDER.map((c) => ({ color: c, lab: toLab(expected[c]) }))
+  return cells.map((rgb, i) => {
+    if (i === 4) return center
+    const lab = toLab(rgb)
+    let best = refs[0]
+    let bestDist = Infinity
+    for (const ref of refs) {
+      const d = labDistance(lab, ref.lab)
+      if (d < bestDist) {
+        bestDist = d
+        best = ref
+      }
+    }
+    return best.color
+  })
+}
+
+function median(values: number[]): number {
+  const sorted = values.slice().sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)]
+}
+
+function sampleCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): Rgb {
+  const inset = size * 0.28
   const sx = Math.round(x + inset)
   const sy = Math.round(y + inset)
   const sw = Math.max(1, Math.round(size - inset * 2))
   const sh = Math.max(1, Math.round(size - inset * 2))
   const data = ctx.getImageData(sx, sy, sw, sh).data
-  let r = 0
-  let g = 0
-  let b = 0
-  const count = sw * sh
+  const r: number[] = []
+  const g: number[] = []
+  const b: number[] = []
   for (let i = 0; i < data.length; i += 4) {
-    r += data[i]
-    g += data[i + 1]
-    b += data[i + 2]
+    r.push(data[i])
+    g.push(data[i + 1])
+    b.push(data[i + 2])
   }
-  return {
-    r: Math.round(r / count),
-    g: Math.round(g / count),
-    b: Math.round(b / count),
-  }
+  return { r: median(r), g: median(g), b: median(b) }
 }
 
-/** Sample a 3x3 face from an image drawn into a square canvas region. */
-export function sampleFaceColors(
-  source: CanvasImageSource,
-  sourceWidth: number,
-  sourceHeight: number,
-): StickerColor[] {
+/** Fraction of the square crop left outside the 3x3 guide on each side. */
+export const GUIDE_MARGIN = 0.12
+
+/**
+ * Reads the 9 cells inside the guide frame. The guide sits over the centered
+ * square crop of the source, matching how the viewport displays it.
+ */
+export function sampleFaceRgb(source: CanvasImageSource, sourceWidth: number, sourceHeight: number): Rgb[] {
   const size = 300
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) {
-    return Array(9).fill('U') as StickerColor[]
-  }
+  if (!ctx) return Array.from({ length: 9 }, () => ({ ...REFERENCE_RGB.U }))
 
-  const scale = Math.min(size / sourceWidth, size / sourceHeight)
-  const dw = sourceWidth * scale
-  const dh = sourceHeight * scale
-  const dx = (size - dw) / 2
-  const dy = (size - dh) / 2
-  ctx.fillStyle = '#111'
-  ctx.fillRect(0, 0, size, size)
-  ctx.drawImage(source, dx, dy, dw, dh)
+  const side = Math.min(sourceWidth, sourceHeight)
+  ctx.drawImage(source, (sourceWidth - side) / 2, (sourceHeight - side) / 2, side, side, 0, 0, size, size)
 
-  const margin = size * 0.12
-  const usable = size - margin * 2
-  const cell = usable / 3
-  const colors: StickerColor[] = []
+  const margin = size * GUIDE_MARGIN
+  const cell = (size - margin * 2) / 3
+  const cells: Rgb[] = []
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
-      const x = margin + col * cell
-      const y = margin + row * cell
-      colors.push(nearestColor(sampleCellAverage(ctx, x, y, cell)))
+      cells.push(sampleCell(ctx, margin + col * cell, margin + row * cell, cell))
     }
   }
-  // Force center to nearest of remaining? Keep as sampled; editor can fix.
-  return colors
+  return cells
 }

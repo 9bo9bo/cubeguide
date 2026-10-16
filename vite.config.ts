@@ -24,8 +24,15 @@ function cubejsGlobalThis(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [cubejsGlobalThis(), react()],
+  worker: {
+    format: 'es',
+    plugins: () => [cubejsGlobalThis()],
+  },
   optimizeDeps: {
-    exclude: ['cubejs'],
+    include: ['cubejs'],
+    rolldownOptions: {
+      plugins: [cubejsGlobalThis()],
+    },
   },
   build: {
     commonjsOptions: {

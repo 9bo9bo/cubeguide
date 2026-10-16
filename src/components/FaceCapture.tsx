@@ -3,30 +3,37 @@ import {
   CAPTURE_ORDER,
   COLOR_HEX,
   FACE_LABELS,
-  sampleFaceColors,
+  FACE_NEIGHBORS,
+  FACE_SHORT,
+  FACE_VIEW_HINT,
+  sampleFaceRgb,
   type FaceId,
+  type Rgb,
   type StickerColor,
 } from '../lib/colors'
 import type { CaptureProgress } from '../lib/cubeState'
 
 interface FaceCaptureProps {
   progress: CaptureProgress
+  /** Stores the raw cells of a face and returns its calibrated classification. */
+  onSample: (face: FaceId, cells: Rgb[]) => StickerColor[]
   onCapture: (face: FaceId, colors: StickerColor[]) => void
   onDone: () => void
+  onBack: () => void
 }
 
-type Mode = 'camera' | 'photo' | 'manual'
+type Mode = 'camera' | 'photo'
 
-export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
+export function FaceCapture({ progress, onSample, onCapture, onDone, onBack }: FaceCaptureProps) {
   const [faceIndex, setFaceIndex] = useState(0)
   const [mode, setMode] = useState<Mode>('photo')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [preview, setPreview] = useState<StickerColor[] | null>(null)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [paintColor, setPaintColor] = useState<StickerColor>('U')
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const face = CAPTURE_ORDER[faceIndex]
   const capturedCount = CAPTURE_ORDER.filter((f) => progress[f]).length
@@ -59,9 +66,7 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
           await videoRef.current.play()
         }
       } catch {
-        setCameraError(
-          'カメラを使えませんでした。写真アップロードまたは手動入力をご利用ください。',
-        )
+        setCameraError('カメラを使えませんでした。写真アップロードまたは展開図での入力をご利用ください。')
         setMode('photo')
       }
     })()
@@ -71,29 +76,32 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
     }
   }, [mode, stopCamera])
 
-  const applyColors = (colors: StickerColor[]) => {
-    setPreview(colors)
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl)
+    }
+  }, [photoUrl])
+
+  const selectFace = (index: number) => {
+    setFaceIndex(index)
+    setPreview(progress[CAPTURE_ORDER[index]] ?? null)
+    setPhotoUrl(null)
   }
 
   const confirmPreview = () => {
     if (!preview) return
     onCapture(face, preview)
-    setPreview(null)
-    if (faceIndex < CAPTURE_ORDER.length - 1) {
-      setFaceIndex((i) => i + 1)
+    if (faceIndex < CAPTURE_ORDER.length - 1) selectFace(faceIndex + 1)
+    else {
+      setPreview(null)
+      setPhotoUrl(null)
     }
   }
 
   const captureFromVideo = () => {
     const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas || !video.videoWidth) return
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0)
-    applyColors(sampleFaceColors(canvas, canvas.width, canvas.height))
+    if (!video || !video.videoWidth) return
+    setPreview(onSample(face, sampleFaceRgb(video, video.videoWidth, video.videoHeight)))
   }
 
   const onFile = (file: File | undefined) => {
@@ -101,30 +109,29 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.onload = () => {
-      applyColors(sampleFaceColors(img, img.naturalWidth, img.naturalHeight))
-      URL.revokeObjectURL(url)
+      setPreview(onSample(face, sampleFaceRgb(img, img.naturalWidth, img.naturalHeight)))
+      setPhotoUrl(url)
     }
     img.src = url
   }
 
-  const manualPaint = (index: number, color: StickerColor) => {
-    const base =
-      preview ??
-      progress[face] ??
-      (Array(9).fill(face) as StickerColor[])
+  const fixSticker = (index: number, color: StickerColor) => {
+    const base = preview ?? progress[face]
+    if (!base || index === 4) return
     const next = base.slice()
     next[index] = color
-    // keep center as face's nominal color suggestion unless user paints it
     setPreview(next)
   }
 
   return (
     <section className="panel capture">
       <header className="panel-head">
-        <h2>面を入力</h2>
+        <h2>写真・カメラで入力</h2>
         <p>
-          {FACE_LABELS[face]}（{faceIndex + 1} / {CAPTURE_ORDER.length}）—
-          中心が{FACE_LABELS[face].match(/（(.+)）/)?.[1] ?? face}になる向きで撮影してください
+          {FACE_LABELS[face]}（{faceIndex + 1} / {CAPTURE_ORDER.length}）— {FACE_VIEW_HINT[face]}
+        </p>
+        <p className="hint">
+          枠の上辺が{FACE_SHORT[FACE_NEIGHBORS[face].top]}面に接する向きで撮影してください。中心の色を基準に、照明に合わせて色を補正します。
         </p>
       </header>
 
@@ -134,12 +141,10 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
             key={f}
             type="button"
             className={`face-tab ${f === face ? 'active' : ''} ${progress[f] ? 'done' : ''}`}
-            onClick={() => {
-              setFaceIndex(i)
-              setPreview(progress[f] ?? null)
-            }}
+            style={{ borderBottomColor: COLOR_HEX[f] }}
+            onClick={() => selectFace(i)}
           >
-            {f}
+            {FACE_SHORT[f]}
           </button>
         ))}
       </div>
@@ -159,23 +164,13 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
         >
           写真
         </button>
-        <button
-          type="button"
-          className={mode === 'manual' ? 'chip active' : 'chip'}
-          onClick={() => {
-            setMode('manual')
-            setPreview(progress[face] ?? (Array(9).fill(face) as StickerColor[]))
-          }}
-        >
-          手動
-        </button>
       </div>
 
       {cameraError && <p className="error-text">{cameraError}</p>}
 
       <div className="capture-stage">
         {mode === 'camera' && (
-          <div className="viewport">
+          <div className="viewport square">
             <video ref={videoRef} playsInline muted className="media" />
             <div className="grid-overlay" aria-hidden />
             <button type="button" className="primary" onClick={captureFromVideo}>
@@ -185,11 +180,15 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
         )}
 
         {mode === 'photo' && (
-          <div className="viewport photo-drop">
+          <div className={`viewport square ${photoUrl ? '' : 'photo-drop'}`}>
+            {photoUrl ? (
+              <img src={photoUrl} alt="" className="media" />
+            ) : (
+              <p>キューブの1面が枠に収まる写真を選んでください（中央を正方形に切り取って読み取ります）</p>
+            )}
             <div className="grid-overlay static" aria-hidden />
-            <p>キューブの1面が枠に収まる写真を選んでください</p>
             <button type="button" className="primary" onClick={() => fileRef.current?.click()}>
-              写真を選択
+              {photoUrl ? '別の写真を選択' : '写真を選択'}
             </button>
             <input
               ref={fileRef}
@@ -197,24 +196,32 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
               accept="image/*"
               capture="environment"
               hidden
-              onChange={(e) => onFile(e.target.files?.[0])}
+              onChange={(e) => {
+                onFile(e.target.files?.[0])
+                e.target.value = ''
+              }}
             />
           </div>
         )}
 
-        {(mode === 'manual' || preview) && (
+        {(preview ?? progress[face]) && (
           <div className="preview-block">
-            <p className="preview-label">認識結果（タップで色修正）</p>
+            <p className="preview-label">
+              認識結果（タップで色修正）— 上辺: {FACE_SHORT[FACE_NEIGHBORS[face].top]}面側
+            </p>
             <div className="sticker-grid">
-              {(preview ?? progress[face] ?? Array(9).fill('U')).map((c, i) => (
+              {(preview ?? progress[face] ?? []).map((c, i) => (
                 <button
                   key={i}
                   type="button"
-                  className="sticker"
-                  style={{ background: COLOR_HEX[c as StickerColor] }}
-                  onClick={() => manualPaint(i, paintColor)}
+                  className={`sticker ${i === 4 ? 'center' : ''}`}
+                  style={{ background: COLOR_HEX[c] }}
+                  disabled={i === 4}
+                  onClick={() => fixSticker(i, paintColor)}
                   aria-label={`ステッカー ${i + 1}`}
-                />
+                >
+                  {i === 4 ? FACE_SHORT[face] : null}
+                </button>
               ))}
             </div>
             <div className="palette">
@@ -229,7 +236,7 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
                 />
               ))}
             </div>
-            <p className="hint">パレットで色を選び、ステッカーをタップして塗ります</p>
+            <p className="hint">パレットで色を選び、ステッカーをタップして塗ります（中心は固定）</p>
             {preview && (
               <button type="button" className="primary" onClick={confirmPreview}>
                 この面を確定
@@ -239,19 +246,17 @@ export function FaceCapture({ progress, onCapture, onDone }: FaceCaptureProps) {
         )}
       </div>
 
-      <canvas ref={canvasRef} hidden />
-
       <footer className="panel-foot">
-        <span>
-          入力済み {capturedCount} / {CAPTURE_ORDER.length} 面
-        </span>
-        <button
-          type="button"
-          className="primary"
-          disabled={capturedCount < 6}
-          onClick={onDone}
-        >
-          色の最終確認へ
+        <div className="foot-left">
+          <button type="button" className="ghost" onClick={onBack}>
+            戻る
+          </button>
+          <span>
+            入力済み {capturedCount} / {CAPTURE_ORDER.length} 面
+          </span>
+        </div>
+        <button type="button" className="primary" onClick={onDone}>
+          {capturedCount < CAPTURE_ORDER.length ? '残りを展開図で入力' : '展開図で最終確認'}
         </button>
       </footer>
     </section>

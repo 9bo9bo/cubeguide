@@ -1,72 +1,108 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ColorEditor } from './components/ColorEditor'
 import { FaceCapture } from './components/FaceCapture'
 import { SolutionPlayer } from './components/SolutionPlayer'
-import type { FaceId, StickerColor } from './lib/colors'
+import {
+  calibrationFromSamples,
+  classifyFace,
+  FACE_ORDER,
+  type FaceId,
+  type FaceSamples,
+  type Rgb,
+  type StickerColor,
+} from './lib/colors'
 import { applyMoves } from './lib/cubeLogic'
 import {
+  createEmptyDraft,
   createSolvedStickers,
   mergeCapture,
   type CaptureProgress,
   type CubeStickers,
+  type DraftStickers,
 } from './lib/cubeState'
 import type { Move } from './lib/moves'
-import { ensureSolver, scrambleMoves, solveCube } from './lib/solver'
+import { scrambleMoves, solveCube, warmupSolver } from './lib/solver'
 import './App.css'
 
 type Phase = 'intro' | 'capture' | 'edit' | 'play'
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('intro')
+  const [editFrom, setEditFrom] = useState<'intro' | 'capture'>('intro')
   const [progress, setProgress] = useState<CaptureProgress>({})
-  const [stickers, setStickers] = useState<CubeStickers>(createSolvedStickers())
+  const [draft, setDraft] = useState<DraftStickers>(createEmptyDraft)
+  const [stickers, setStickers] = useState<CubeStickers>(createSolvedStickers)
   const [moves, setMoves] = useState<Move[]>([])
   const [solving, setSolving] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    warmupSolver()
+  }, [])
+
+  const [samples, setSamples] = useState<FaceSamples>({})
+  /** Last automatic classification per face, to tell untouched faces from hand-fixed ones. */
+  const autoColors = useRef<CaptureProgress>({})
 
   const onCapture = useCallback((face: FaceId, colors: StickerColor[]) => {
     setProgress((p) => ({ ...p, [face]: colors }))
   }, [])
 
-  const goEditFromCapture = () => {
-    setStickers(mergeCapture(createSolvedStickers(), progress))
-    setErrors([])
-    setPhase('edit')
-  }
+  const onSample = (face: FaceId, cells: Rgb[]): StickerColor[] => {
+    const nextSamples = { ...samples, [face]: cells }
+    setSamples(nextSamples)
+    const calibration = calibrationFromSamples(nextSamples)
 
-  const startDemo = async () => {
-    await ensureSolver()
-    const scramble = scrambleMoves(20)
-    const scrambled = applyMoves(createSolvedStickers(), scramble)
-    setStickers(scrambled)
-    setProgress({})
-    setErrors([])
-    setPhase('edit')
-  }
-
-  const fillManualSolved = () => {
-    const solved = createSolvedStickers()
-    const p: CaptureProgress = {}
-    for (const face of ['U', 'R', 'F', 'D', 'L', 'B'] as FaceId[]) {
-      p[face] = solved.slice(
-        ['U', 'R', 'F', 'D', 'L', 'B'].indexOf(face) * 9,
-        ['U', 'R', 'F', 'D', 'L', 'B'].indexOf(face) * 9 + 9,
-      )
+    // A new center refines the calibration, so re-read faces the user hasn't touched.
+    const refreshed: CaptureProgress = {}
+    for (const f of FACE_ORDER) {
+      const s = nextSamples[f]
+      const current = progress[f]
+      const auto = autoColors.current[f]
+      if (f === face || !s || !current || !auto || current.join() !== auto.join()) continue
+      refreshed[f] = classifyFace(s, f, calibration)
+      autoColors.current[f] = refreshed[f]
     }
-    setProgress(p)
-    setStickers(solved)
-    setPhase('capture')
+    if (Object.keys(refreshed).length > 0) setProgress((p) => ({ ...p, ...refreshed }))
+
+    const colors = classifyFace(cells, face, calibration)
+    autoColors.current[face] = colors
+    return colors
+  }
+
+  const openEditor = (next: DraftStickers, from: 'intro' | 'capture') => {
+    setDraft(next)
+    setEditFrom(from)
+    setErrors([])
+    setPhase('edit')
+  }
+
+  const startManual = () => openEditor(createEmptyDraft(), 'intro')
+
+  const goEditFromCapture = () => openEditor(mergeCapture(createEmptyDraft(), progress), 'capture')
+
+  const startDemo = () => {
+    setProgress({})
+    openEditor(applyMoves(createSolvedStickers(), scrambleMoves(20)), 'intro')
+  }
+
+  const changeDraft = (next: DraftStickers) => {
+    setDraft(next)
+    setErrors([])
   }
 
   const runSolve = async () => {
+    if (draft.some((s) => s === null)) return
+    const complete = draft as CubeStickers
     setSolving(true)
     setErrors([])
-    const result = await solveCube(stickers)
+    const result = await solveCube(complete)
     setSolving(false)
     if (!result.ok) {
       setErrors(result.errors)
       return
     }
+    setStickers(complete)
     setMoves(result.moves)
     setPhase('play')
   }
@@ -74,6 +110,9 @@ export default function App() {
   const restart = () => {
     setPhase('intro')
     setProgress({})
+    setSamples({})
+    autoColors.current = {}
+    setDraft(createEmptyDraft())
     setStickers(createSolvedStickers())
     setMoves([])
     setErrors([])
@@ -103,23 +142,23 @@ export default function App() {
             <div className="hero-copy">
               <h1>CubeGuide</h1>
               <p className="lede">
-                写真やカメラで今のキューブを取り込み、一手ずつアニメーションで回し方を案内します。
+                展開図や写真で今のキューブを入力すると、一手ずつアニメーションで回し方を案内します。
               </p>
               <div className="hero-actions">
-                <button type="button" className="primary" onClick={() => setPhase('capture')}>
-                  面を入力する
+                <button type="button" className="primary" onClick={startManual}>
+                  展開図で入力する
+                </button>
+                <button type="button" className="ghost" onClick={() => setPhase('capture')}>
+                  写真・カメラで入力
                 </button>
                 <button type="button" className="ghost" onClick={startDemo}>
                   デモ（ランダムスクランブル）
-                </button>
-                <button type="button" className="ghost" onClick={fillManualSolved}>
-                  手動で揃った状態から
                 </button>
               </div>
             </div>
             <div className="hero-visual" aria-hidden>
               <div className="hero-cube">
-                {(['U', 'R', 'F'] as const).map((face) => (
+                {(['U', 'D', 'F', 'B', 'R', 'L'] as const).map((face) => (
                   <div key={face} className={`hero-face face-${face}`}>
                     {Array.from({ length: 9 }, (_, i) => (
                       <i key={i} />
@@ -134,16 +173,19 @@ export default function App() {
         {phase === 'capture' && (
           <FaceCapture
             progress={progress}
+            onSample={onSample}
             onCapture={onCapture}
             onDone={goEditFromCapture}
+            onBack={() => setPhase('intro')}
           />
         )}
 
         {phase === 'edit' && (
           <ColorEditor
-            stickers={stickers}
-            onChange={setStickers}
-            onBack={() => setPhase('capture')}
+            draft={draft}
+            onChange={changeDraft}
+            onBack={() => setPhase(editFrom)}
+            backLabel={editFrom === 'capture' ? '撮影に戻る' : 'トップに戻る'}
             onSolve={runSolve}
             solving={solving}
             errors={errors}
