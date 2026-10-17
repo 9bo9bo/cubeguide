@@ -30,10 +30,10 @@ function stickerIndexForCubieFace(
   switch (face) {
     case 'U':
       if (y !== 1) return null
-      return base + (2 - toCell(z)) * 3 + toCell(x)
+      return base + toCell(z) * 3 + toCell(x)
     case 'D':
       if (y !== -1) return null
-      return base + toCell(z) * 3 + toCell(x)
+      return base + (2 - toCell(z)) * 3 + toCell(x)
     case 'F':
       if (z !== 1) return null
       return base + (2 - toCell(y)) * 3 + toCell(x)
